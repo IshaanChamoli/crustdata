@@ -1,20 +1,55 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import Link from 'next/link';
+
+const WORD_LIMIT = 600;
+const DOCUMENT_CATEGORIES = ['Document 1', 'Document 2'];
 
 export default function RAGBuilder() {
   const [chunks, setChunks] = useState([]);
   const [currentChunk, setCurrentChunk] = useState('');
   const [editingIndex, setEditingIndex] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(DOCUMENT_CATEGORIES[0]);
+
+  // Load chunks from localStorage on component mount
+  useEffect(() => {
+    const savedChunks = localStorage.getItem('ragBuilderChunks');
+    if (savedChunks) {
+      try {
+        setChunks(JSON.parse(savedChunks));
+      } catch (error) {
+        console.error('Error loading chunks from localStorage:', error);
+        localStorage.removeItem('ragBuilderChunks'); // Clear invalid data
+      }
+    }
+  }, []);
+
+  // Save chunks to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('ragBuilderChunks', JSON.stringify(chunks));
+  }, [chunks]);
 
   const handleAddChunk = () => {
     if (!currentChunk.trim()) return;
     
+    if (isOverWordLimit(currentChunk)) {
+      const shouldAdd = window.confirm(
+        `This chunk has ${getWordCount(currentChunk)} words, which is over the recommended limit of ${WORD_LIMIT} words. ` +
+        'Longer chunks might affect the quality of embeddings and retrieval. Add anyway?'
+      );
+      if (!shouldAdd) return;
+    }
+    
     if (editingIndex !== null) {
       const newChunks = chunks.map(chunk => 
         chunk.originalIndex === editingIndex + 1 
-          ? { ...chunk, content: currentChunk }
+          ? { 
+              ...chunk, 
+              content: currentChunk,
+              category: selectedCategory,
+              lastModified: Date.now() 
+            }
           : chunk
       );
       setChunks(newChunks);
@@ -22,17 +57,34 @@ export default function RAGBuilder() {
     } else {
       const nextIndex = chunks.length + 1;
       setChunks([
-        { content: currentChunk, originalIndex: nextIndex, timestamp: Date.now() },
+        { 
+          content: currentChunk, 
+          originalIndex: nextIndex,
+          category: selectedCategory,
+          timestamp: Date.now(),
+          lastModified: Date.now()
+        },
         ...chunks
       ]);
     }
     setCurrentChunk('');
   };
 
+  // Add clear all functionality
+  const handleClearAll = () => {
+    if (window.confirm('Are you sure you want to clear all chunks? This cannot be undone.')) {
+      setChunks([]);
+      setCurrentChunk('');
+      setEditingIndex(null);
+      localStorage.removeItem('ragBuilderChunks');
+    }
+  };
+
   const handleEditChunk = (index) => {
     const chunk = chunks.find(c => c.originalIndex === index);
     if (chunk) {
       setCurrentChunk(chunk.content);
+      setSelectedCategory(chunk.category);
       setEditingIndex(index - 1);
     }
   };
@@ -45,17 +97,35 @@ export default function RAGBuilder() {
     }
   };
 
+  const getWordCount = (text) => {
+    return text.trim() ? text.trim().split(/\s+/).length : 0;
+  };
+
+  const isOverWordLimit = (text) => {
+    return getWordCount(text) > WORD_LIMIT;
+  };
+
   return (
     <div className="h-screen flex flex-col">
-      {/* Header */}
+      {/* Header with Clear All button */}
       <div className="border-b p-4 flex justify-between items-center bg-white">
         <h1 className="text-2xl font-bold">RAG Builder</h1>
-        <Link
-          href="/"
-          className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-        >
-          Back to Chat
-        </Link>
+        <div className="flex gap-4">
+          {chunks.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+            >
+              Clear All
+            </button>
+          )}
+          <Link
+            href="/"
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            Back to Chat
+          </Link>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -63,13 +133,41 @@ export default function RAGBuilder() {
         {/* Left Side - Fixed */}
         <div className="w-1/2 border-r flex flex-col">
           <div className="flex-1 p-6 flex flex-col">
-            {/* Add Chunk Button - Now at Top */}
-            <button
-              onClick={handleAddChunk}
-              className="w-full px-6 py-2 mb-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              {editingIndex !== null ? 'Update Chunk' : 'Add Chunk'}
-            </button>
+            {/* Add Chunk Button with Category and Word Count */}
+            <div className="flex items-center gap-4 mb-4">
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {DOCUMENT_CATEGORIES.map(category => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleAddChunk}
+                disabled={!currentChunk.trim()}
+                className={`flex-1 px-6 py-2 rounded-lg transition-colors ${
+                  isOverWordLimit(currentChunk)
+                    ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {editingIndex !== null ? 'Update Chunk' : 'Add Chunk'}
+                {isOverWordLimit(currentChunk) && ' (Warning)'}
+              </button>
+              <div className={`text-sm ${
+                isOverWordLimit(currentChunk) 
+                  ? 'text-red-500 font-medium' 
+                  : getWordCount(currentChunk) > WORD_LIMIT * 0.8 
+                    ? 'text-yellow-600' 
+                    : 'text-gray-500'
+              }`}>
+                {getWordCount(currentChunk)} / {WORD_LIMIT} words
+              </div>
+            </div>
 
             {/* Input Area - Fixed Height */}
             <div className="h-[200px] mb-4">
@@ -138,7 +236,14 @@ export default function RAGBuilder() {
                   className="border rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow"
                 >
                   <div className="border-b bg-gray-50 px-4 py-2 flex justify-between items-center">
-                    <div className="text-sm text-gray-500">Chunk {chunk.originalIndex}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm text-gray-500">
+                        Chunk {chunk.originalIndex} • {chunk.category}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {new Date(chunk.lastModified).toLocaleString()}
+                      </div>
+                    </div>
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleEditChunk(chunk.originalIndex)}
