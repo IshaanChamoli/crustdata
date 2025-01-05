@@ -12,31 +12,41 @@ export default function RAGBuilder() {
     if (!currentChunk.trim()) return;
     
     if (editingIndex !== null) {
-      const newChunks = [...chunks];
-      newChunks[editingIndex] = currentChunk;
+      const newChunks = chunks.map(chunk => 
+        chunk.originalIndex === editingIndex + 1 
+          ? { ...chunk, content: currentChunk }
+          : chunk
+      );
       setChunks(newChunks);
       setEditingIndex(null);
     } else {
-      setChunks([...chunks, currentChunk]);
+      const nextIndex = chunks.length + 1;
+      setChunks([
+        { content: currentChunk, originalIndex: nextIndex, timestamp: Date.now() },
+        ...chunks
+      ]);
     }
     setCurrentChunk('');
   };
 
   const handleEditChunk = (index) => {
-    setCurrentChunk(chunks[index]);
-    setEditingIndex(index);
+    const chunk = chunks.find(c => c.originalIndex === index);
+    if (chunk) {
+      setCurrentChunk(chunk.content);
+      setEditingIndex(index - 1);
+    }
   };
 
   const handleDeleteChunk = (index) => {
-    setChunks(chunks.filter((_, i) => i !== index));
-    if (editingIndex === index) {
+    setChunks(chunks.filter(chunk => chunk.originalIndex !== index));
+    if (editingIndex === index - 1) {
       setEditingIndex(null);
       setCurrentChunk('');
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col">
       {/* Header */}
       <div className="border-b p-4 flex justify-between items-center bg-white">
         <h1 className="text-2xl font-bold">RAG Builder</h1>
@@ -50,16 +60,24 @@ export default function RAGBuilder() {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Side - Input */}
-        <div className="w-1/2 border-r flex flex-col h-full">
-          <div className="flex-1 flex flex-col p-6 min-h-0">
+        {/* Left Side - Fixed */}
+        <div className="w-1/2 border-r flex flex-col">
+          <div className="flex-1 p-6 flex flex-col">
+            {/* Add Chunk Button - Now at Top */}
+            <button
+              onClick={handleAddChunk}
+              className="w-full px-6 py-2 mb-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              {editingIndex !== null ? 'Update Chunk' : 'Add Chunk'}
+            </button>
+
             {/* Input Area - Fixed Height */}
-            <div className="h-1/2 flex flex-col gap-4 mb-4">
+            <div className="h-[200px] mb-4">
               <textarea
                 value={currentChunk}
                 onChange={(e) => setCurrentChunk(e.target.value)}
                 placeholder="Enter your markdown text here..."
-                className="flex-1 p-4 border rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="h-full w-full p-4 border rounded-lg font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
             </div>
 
@@ -70,27 +88,31 @@ export default function RAGBuilder() {
                   <div className="p-3 border-b bg-gray-50 text-sm text-gray-500">
                     Preview:
                   </div>
-                  <div className="flex-1 overflow-auto p-4">
-                    <ReactMarkdown
-                      className="prose prose-sm max-w-none"
-                      components={{
-                        h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-4" {...props} />,
-                        h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-3" {...props} />,
-                        h3: ({node, ...props}) => <h3 className="text-md font-bold mb-2" {...props} />,
-                        p: ({node, ...props}) => <p className="mb-4" {...props} />,
-                        ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-4" {...props} />,
-                        ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-4" {...props} />,
-                        li: ({node, ...props}) => <li className="mb-1" {...props} />,
-                        code: ({node, inline, ...props}) => 
-                          inline ? (
-                            <code className="bg-gray-100 rounded px-1 py-0.5 text-sm" {...props} />
-                          ) : (
-                            <code className="block bg-gray-100 rounded p-2 overflow-x-auto text-sm my-2" {...props} />
-                          ),
-                      }}
-                    >
-                      {currentChunk}
-                    </ReactMarkdown>
+                  <div className="flex-1 min-h-0">
+                    <div className="h-full overflow-y-auto">
+                      <div className="p-4">
+                        <ReactMarkdown
+                          className="prose prose-sm max-w-none"
+                          components={{
+                            h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-4" {...props} />,
+                            h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-3" {...props} />,
+                            h3: ({node, ...props}) => <h3 className="text-md font-bold mb-2" {...props} />,
+                            p: ({node, ...props}) => <p className="mb-4" {...props} />,
+                            ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-4" {...props} />,
+                            ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-4" {...props} />,
+                            li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                            code: ({node, inline, ...props}) => 
+                              inline ? (
+                                <code className="bg-gray-100 rounded px-1 py-0.5 text-sm" {...props} />
+                              ) : (
+                                <code className="block bg-gray-100 rounded p-2 overflow-x-auto text-sm my-2" {...props} />
+                              ),
+                          }}
+                        >
+                          {currentChunk}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -100,42 +122,32 @@ export default function RAGBuilder() {
               )}
             </div>
           </div>
-
-          {/* Button Area - Fixed at Bottom */}
-          <div className="p-6 border-t bg-white">
-            <button
-              onClick={handleAddChunk}
-              className="w-full px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              {editingIndex !== null ? 'Update Chunk' : 'Add Chunk'}
-            </button>
-          </div>
         </div>
 
-        {/* Right Side - Chunks Display (Scrollable) */}
-        <div className="w-1/2 flex flex-col h-full overflow-hidden">
+        {/* Right Side - Independently Scrollable */}
+        <div className="w-1/2 flex flex-col">
           <div className="p-6 border-b bg-white">
             <h2 className="text-xl font-semibold">Text Chunks ({chunks.length})</h2>
           </div>
           
-          <div className="flex-1 overflow-auto p-6">
-            <div className="space-y-4">
-              {chunks.map((chunk, index) => (
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-6 space-y-4">
+              {chunks.map((chunk) => (
                 <div
-                  key={index}
+                  key={chunk.originalIndex}
                   className="border rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow"
                 >
                   <div className="border-b bg-gray-50 px-4 py-2 flex justify-between items-center">
-                    <div className="text-sm text-gray-500">Chunk {index + 1}</div>
+                    <div className="text-sm text-gray-500">Chunk {chunk.originalIndex}</div>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleEditChunk(index)}
+                        onClick={() => handleEditChunk(chunk.originalIndex)}
                         className="px-3 py-1 text-sm text-blue-500 hover:bg-blue-50 rounded"
                       >
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDeleteChunk(index)}
+                        onClick={() => handleDeleteChunk(chunk.originalIndex)}
                         className="px-3 py-1 text-sm text-red-500 hover:bg-red-50 rounded"
                       >
                         Delete
@@ -161,7 +173,7 @@ export default function RAGBuilder() {
                           ),
                       }}
                     >
-                      {chunk}
+                      {chunk.content}
                     </ReactMarkdown>
                   </div>
                 </div>
