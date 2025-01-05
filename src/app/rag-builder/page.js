@@ -11,16 +11,33 @@ export default function RAGBuilder() {
   const [currentChunk, setCurrentChunk] = useState('');
   const [editingIndex, setEditingIndex] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(DOCUMENT_CATEGORIES[0]);
+  const [processingChunks, setProcessingChunks] = useState(new Set());
+  const [categoryIndices, setCategoryIndices] = useState({
+    'Document 1': 0,
+    'Document 2': 0
+  });
 
   // Load chunks from localStorage on component mount
   useEffect(() => {
     const savedChunks = localStorage.getItem('ragBuilderChunks');
     if (savedChunks) {
       try {
-        setChunks(JSON.parse(savedChunks));
+        const parsedChunks = JSON.parse(savedChunks);
+        setChunks(parsedChunks);
+        
+        // Reconstruct category indices from loaded chunks
+        const maxIndices = parsedChunks.reduce((acc, chunk) => ({
+          ...acc,
+          [chunk.category]: Math.max(acc[chunk.category] || 0, chunk.originalIndex)
+        }), {
+          'Document 1': 0,
+          'Document 2': 0
+        });
+        
+        setCategoryIndices(maxIndices);
       } catch (error) {
         console.error('Error loading chunks from localStorage:', error);
-        localStorage.removeItem('ragBuilderChunks'); // Clear invalid data
+        localStorage.removeItem('ragBuilderChunks');
       }
     }
   }, []);
@@ -43,7 +60,7 @@ export default function RAGBuilder() {
     
     if (editingIndex !== null) {
       const newChunks = chunks.map(chunk => 
-        chunk.originalIndex === editingIndex + 1 
+        chunk.originalIndex === editingIndex 
           ? { 
               ...chunk, 
               content: currentChunk,
@@ -55,14 +72,21 @@ export default function RAGBuilder() {
       setChunks(newChunks);
       setEditingIndex(null);
     } else {
-      const nextIndex = chunks.length + 1;
+      // Update the category index and get the next index
+      setCategoryIndices(prev => ({
+        ...prev,
+        [selectedCategory]: prev[selectedCategory] + 1
+      }));
+      
+      // Create category-specific ID (e.g., "1.1" for Document 1, "2.1" for Document 2)
+      const categoryPrefix = selectedCategory === 'Document 1' ? '1.' : '2.';
+      const nextIndex = categoryPrefix + (categoryIndices[selectedCategory] + 1);
+      
       setChunks([
         { 
           content: currentChunk, 
           originalIndex: nextIndex,
           category: selectedCategory,
-          timestamp: Date.now(),
-          lastModified: Date.now()
         },
         ...chunks
       ]);
@@ -76,6 +100,10 @@ export default function RAGBuilder() {
       setChunks([]);
       setCurrentChunk('');
       setEditingIndex(null);
+      setCategoryIndices({
+        'Document 1': 0,
+        'Document 2': 0
+      });
       localStorage.removeItem('ragBuilderChunks');
     }
   };
@@ -85,13 +113,13 @@ export default function RAGBuilder() {
     if (chunk) {
       setCurrentChunk(chunk.content);
       setSelectedCategory(chunk.category);
-      setEditingIndex(index - 1);
+      setEditingIndex(index);
     }
   };
 
   const handleDeleteChunk = (index) => {
     setChunks(chunks.filter(chunk => chunk.originalIndex !== index));
-    if (editingIndex === index - 1) {
+    if (editingIndex === index) {
       setEditingIndex(null);
       setCurrentChunk('');
     }
@@ -103,6 +131,101 @@ export default function RAGBuilder() {
 
   const isOverWordLimit = (text) => {
     return getWordCount(text) > WORD_LIMIT;
+  };
+
+  const handleConvertChunk = async (chunkId) => {
+    setProcessingChunks(prev => new Set([...prev, chunkId]));
+    try {
+      const chunk = chunks.find(c => c.originalIndex === chunkId);
+      if (!chunk) throw new Error('Chunk not found');
+
+      const response = await fetch('/api/embeddings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: chunk.content }),
+      });
+
+      if (!response.ok) throw new Error('Failed to generate embedding');
+      
+      const { embedding } = await response.json();
+      
+      // Update the chunk with its embedding
+      setChunks(prevChunks => prevChunks.map(c => 
+        c.originalIndex === chunkId 
+          ? { 
+              ...c, 
+              embedding,
+              embeddingGeneratedAt: Date.now()
+            }
+          : c
+      ));
+
+    } catch (error) {
+      console.error('Error converting chunk:', error);
+      alert('Failed to convert chunk to embedding');
+    } finally {
+      setProcessingChunks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(chunkId);
+        return newSet;
+      });
+    }
+  };
+
+  const handleConvertAll = async () => {
+    const unconvertedChunks = chunks.filter(chunk => !chunk.embedding);
+    const chunkIds = unconvertedChunks.map(chunk => chunk.originalIndex);
+    
+    if (chunkIds.length === 0) {
+      alert('All chunks already have embeddings!');
+      return;
+    }
+
+    setProcessingChunks(new Set(chunkIds));
+    
+    try {
+      // Process chunks in parallel with a limit of 5 concurrent requests
+      const batchSize = 5;
+      for (let i = 0; i < unconvertedChunks.length; i += batchSize) {
+        const batch = unconvertedChunks.slice(i, i + batchSize);
+        await Promise.all(
+          batch.map(async (chunk) => {
+            const response = await fetch('/api/embeddings', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ text: chunk.content }),
+            });
+
+            if (!response.ok) throw new Error('Failed to generate embedding');
+            
+            const { embedding } = await response.json();
+            
+            setChunks(prevChunks => prevChunks.map(c => 
+              c.originalIndex === chunk.originalIndex 
+                ? { ...c, embedding, embeddingGeneratedAt: Date.now() }
+                : c
+            ));
+          })
+        );
+      }
+      
+      alert('Successfully converted all chunks to embeddings!');
+    } catch (error) {
+      console.error('Error converting chunks:', error);
+      alert('Failed to convert some chunks to embeddings');
+    } finally {
+      setProcessingChunks(new Set());
+    }
+  };
+
+  const formatDisplayIndex = (chunk) => {
+    const categoryNum = chunk.category === 'Document 1' ? '1' : '2';
+    const chunkNum = chunk.originalIndex.split('.')[1];
+    return `${chunk.category} - Chunk ${chunkNum}`;
   };
 
   return (
@@ -238,13 +361,37 @@ export default function RAGBuilder() {
                   <div className="border-b bg-gray-50 px-4 py-2 flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <div className="text-sm text-gray-500">
-                        Chunk {chunk.originalIndex} • {chunk.category}
-                      </div>
-                      <div className="text-xs text-gray-400">
-                        {new Date(chunk.lastModified).toLocaleString()}
+                        {formatDisplayIndex(chunk)}
+                        {chunk.embedding && (
+                          <span className="ml-2 text-xs text-green-600">
+                            • Embedding generated {new Date(chunk.embeddingGeneratedAt).toLocaleString()}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-2">
+                      <button
+                        onClick={() => handleConvertChunk(chunk.originalIndex)}
+                        disabled={processingChunks.has(chunk.originalIndex) || chunk.embedding}
+                        className={`px-3 py-1 text-sm rounded flex items-center gap-1 ${
+                          chunk.embedding 
+                            ? 'text-green-600 bg-green-50 cursor-default'
+                            : processingChunks.has(chunk.originalIndex)
+                            ? 'opacity-50 cursor-not-allowed text-green-500'
+                            : 'text-green-500 hover:bg-green-50'
+                        }`}
+                      >
+                        {processingChunks.has(chunk.originalIndex) ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+                            Converting...
+                          </>
+                        ) : chunk.embedding ? (
+                          'Converted ✓'
+                        ) : (
+                          'Convert'
+                        )}
+                      </button>
                       <button
                         onClick={() => handleEditChunk(chunk.originalIndex)}
                         className="px-3 py-1 text-sm text-blue-500 hover:bg-blue-50 rounded"
@@ -280,6 +427,14 @@ export default function RAGBuilder() {
                     >
                       {chunk.content}
                     </ReactMarkdown>
+                    
+                    {chunk.embedding && (
+                      <div className="mt-4 pt-4 border-t">
+                        <div className="text-xs font-mono text-gray-400">
+                          Embedding Preview: [{chunk.embedding.slice(0, 5).map(n => n.toFixed(6)).join(', ')}, ...]
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -297,10 +452,20 @@ export default function RAGBuilder() {
             <div className="p-6 border-t bg-white">
               <div className="flex gap-4">
                 <button
-                  className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 transition-colors"
-                  onClick={() => alert('Generate Embeddings functionality coming soon!')}
+                  className={`flex-1 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 ${
+                    processingChunks.size > 0 ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  onClick={handleConvertAll}
+                  disabled={processingChunks.size > 0}
                 >
-                  Generate Embeddings
+                  {processingChunks.size > 0 ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Converting...
+                    </>
+                  ) : (
+                    'Convert All to Embeddings'
+                  )}
                 </button>
                 <button
                   className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 transition-colors"
