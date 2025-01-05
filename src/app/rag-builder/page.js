@@ -357,14 +357,6 @@ export default function RAGBuilder() {
       <div className="border-b p-4 flex justify-between items-center bg-white">
         <h1 className="text-2xl font-bold">RAG Builder</h1>
         <div className="flex gap-4">
-          {chunks.length > 0 && (
-            <button
-              onClick={handleClearAll}
-              className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
-            >
-              Clear All
-            </button>
-          )}
           <Link
             href="/"
             className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
