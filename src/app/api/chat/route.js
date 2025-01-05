@@ -38,7 +38,7 @@ export async function POST(request) {
     const messages = [
       {
         role: 'system',
-        content: `You are a helpful AI assistant. Use the following context to help answer the user's question, but don't mention that you're using any context unless specifically asked:\n\n${context}`
+        content: `You are a helpful AI assistant. Use markdown formatting in your responses for better readability. Use the following context to help answer the user's question, but don't mention that you're using any context unless specifically asked:\n\n${context}`
       },
       ...messageHistory.map(msg => ({
         role: msg.role === 'bot' ? 'assistant' : msg.role,

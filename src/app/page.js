@@ -124,7 +124,26 @@ export default function Home() {
                     : 'bg-gray-100'
                 }`}
               >
-                {message.content}
+                <ReactMarkdown
+                  className={`prose ${message.role === 'user' ? 'prose-invert' : ''} max-w-none prose-sm`}
+                  components={{
+                    h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-4" {...props} />,
+                    h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-3" {...props} />,
+                    h3: ({node, ...props}) => <h3 className="text-md font-bold mb-2" {...props} />,
+                    p: ({node, ...props}) => <p className="mb-4 last:mb-0" {...props} />,
+                    ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-4" {...props} />,
+                    ol: ({node, ...props}) => <ol className="list-decimal pl-4 mb-4" {...props} />,
+                    li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                    code: ({node, inline, ...props}) => 
+                      inline ? (
+                        <code className="bg-gray-700 bg-opacity-20 rounded px-1 py-0.5 text-sm" {...props} />
+                      ) : (
+                        <code className="block bg-gray-700 bg-opacity-10 rounded p-2 overflow-x-auto text-sm my-2" {...props} />
+                      ),
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
               </div>
               
               {/* Info button for bot messages with references */}

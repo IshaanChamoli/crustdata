@@ -149,7 +149,6 @@ export default function RAGBuilder() {
         'Document 1': 0,
         'Document 2': 0
       });
-      localStorage.removeItem('ragBuilderChunks');
     }
   };
 
