@@ -1,6 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
 
 export default function Home() {
   const [messages, setMessages] = useState([
@@ -9,6 +10,7 @@ export default function Home() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
+  const [selectedReferences, setSelectedReferences] = useState(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -68,6 +70,37 @@ export default function Home() {
 
   return (
     <main className="h-screen flex flex-col">
+      {/* References Modal */}
+      {selectedReferences && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Reference Chunks</h2>
+              <button 
+                onClick={() => setSelectedReferences(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {selectedReferences.map((ref, i) => (
+                <div key={i} className="mb-6 last:mb-0">
+                  <div className="mb-2 text-sm text-gray-500">
+                    {ref.score && `Relevance: ${(ref.score * 100).toFixed(1)}%`}
+                  </div>
+                  <div className="prose prose-sm max-w-none">
+                    <ReactMarkdown>
+                      {ref.text}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <div className="flex justify-between items-center p-4 border-b">
           <h1 className="text-xl font-bold">Chat Interface</h1>
@@ -83,7 +116,7 @@ export default function Home() {
             key={index}
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
-            <div className="max-w-[80%]">
+            <div className="max-w-[80%] relative group">
               <div
                 className={`rounded-lg p-4 ${
                   message.role === 'user'
@@ -94,21 +127,17 @@ export default function Home() {
                 {message.content}
               </div>
               
-              {/* Display references if they exist */}
-              {message.references && message.references.length > 0 && (
-                <div className="mt-2 text-xs text-gray-500">
-                  <div className="font-medium mb-1">References:</div>
-                  {message.references.map((ref, i) => (
-                    <div key={i} className="ml-2 mb-1">
-                      • {ref.text.substring(0, 100)}...
-                      {ref.source !== 'Unknown' && (
-                        <span className="text-gray-400 ml-1">
-                          [Source: {ref.source}]
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
+              {/* Info button for bot messages with references */}
+              {message.role === 'bot' && message.references && message.references.length > 0 && (
+                <button
+                  onClick={() => setSelectedReferences(message.references)}
+                  className="absolute -right-7 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded-full border border-gray-300 flex items-center justify-center"
+                  title="Show references"
+                >
+                  <div className="text-xs text-gray-500 font-serif leading-none">
+                    i
+                  </div>
+                </button>
               )}
             </div>
           </div>

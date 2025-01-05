@@ -27,7 +27,7 @@ export async function POST(request) {
     const index = pinecone.index(process.env.PINECONE_INDEX);
     const searchResponse = await index.query({
       vector: queryEmbedding,
-      topK: 3,
+      topK: 5,
       includeMetadata: true
     });
 
