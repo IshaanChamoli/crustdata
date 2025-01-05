@@ -34,7 +34,8 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [...messages, userMessage]
+          message: input,
+          messageHistory: messages
         }),
       });
 
@@ -47,7 +48,13 @@ export default function Home() {
         throw new Error(data.error);
       }
 
-      setMessages(prev => [...prev, data]);
+      const botMessage = {
+        role: 'bot',
+        content: data.response,
+        references: data.references
+      };
+
+      setMessages(prev => [...prev, botMessage]);
     } catch (error) {
       console.error('Error:', error);
       setMessages(prev => [...prev, {
@@ -76,14 +83,33 @@ export default function Home() {
             key={index}
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
-            <div
-              className={`max-w-[80%] rounded-lg p-4 animate-fade-in ${
-                message.role === 'user'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100'
-              }`}
-            >
-              {message.content}
+            <div className="max-w-[80%]">
+              <div
+                className={`rounded-lg p-4 ${
+                  message.role === 'user'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-100'
+                }`}
+              >
+                {message.content}
+              </div>
+              
+              {/* Display references if they exist */}
+              {message.references && message.references.length > 0 && (
+                <div className="mt-2 text-xs text-gray-500">
+                  <div className="font-medium mb-1">References:</div>
+                  {message.references.map((ref, i) => (
+                    <div key={i} className="ml-2 mb-1">
+                      • {ref.text.substring(0, 100)}...
+                      {ref.source !== 'Unknown' && (
+                        <span className="text-gray-400 ml-1">
+                          [Source: {ref.source}]
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
