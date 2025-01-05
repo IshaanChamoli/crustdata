@@ -101,7 +101,9 @@ export default function RAGBuilder() {
               ...chunk, 
               content: currentChunk,
               category: selectedCategory,
-              lastModified: Date.now() 
+              lastModified: Date.now(),
+              embedding: undefined,
+              embeddingGeneratedAt: undefined
             }
           : chunk
       );
@@ -491,7 +493,7 @@ export default function RAGBuilder() {
                             {formatDisplayIndex(chunk)}
                             {chunk.embedding && (
                               <span className="ml-2 text-xs text-green-600">
-                                • Embedding generated {new Date(chunk.embeddingGeneratedAt).toLocaleString()}
+                                • ({new Date(chunk.embeddingGeneratedAt).toLocaleString()})
                               </span>
                             )}
                           </div>
@@ -501,7 +503,9 @@ export default function RAGBuilder() {
                             onClick={() => handleConvertChunk(chunk.originalIndex)}
                             disabled={processingChunks.has(chunk.originalIndex) || chunk.embedding}
                             className={`px-3 py-1 text-sm rounded flex items-center gap-1 ${
-                              chunk.embedding 
+                              chunk.uploadedToPinecone 
+                                ? 'text-blue-600 bg-blue-50 cursor-default'
+                                : chunk.embedding 
                                 ? 'text-green-600 bg-green-50 cursor-default'
                                 : processingChunks.has(chunk.originalIndex)
                                 ? 'opacity-50 cursor-not-allowed text-green-500'
@@ -513,24 +517,30 @@ export default function RAGBuilder() {
                                 <div className="w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
                                 Converting...
                               </>
+                            ) : chunk.uploadedToPinecone ? (
+                              'Uploaded ✓'
                             ) : chunk.embedding ? (
                               'Converted ✓'
                             ) : (
                               'Convert'
                             )}
                           </button>
-                          <button
-                            onClick={() => handleEditChunk(chunk.originalIndex)}
-                            className="px-3 py-1 text-sm text-blue-500 hover:bg-blue-50 rounded"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteChunk(chunk.originalIndex)}
-                            className="px-3 py-1 text-sm text-red-500 hover:bg-red-50 rounded"
-                          >
-                            Delete
-                          </button>
+                          {!chunk.uploadedToPinecone && (
+                            <>
+                              <button
+                                onClick={() => handleEditChunk(chunk.originalIndex)}
+                                className="px-3 py-1 text-sm text-blue-500 hover:bg-blue-50 rounded"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteChunk(chunk.originalIndex)}
+                                className="px-3 py-1 text-sm text-red-500 hover:bg-red-50 rounded"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div className="p-4">
