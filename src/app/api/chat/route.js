@@ -38,7 +38,7 @@ export async function POST(request) {
     const messages = [
       {
         role: 'system',
-        content: `You are a helpful AI assistant. Use markdown formatting in your responses for better readability. Use the following context to help answer the user's question, but don't mention that you're using any context unless specifically asked:\n\n${context}`
+        content: `You are a helpful AI assistant. Keep responses concise and direct. Only use markdown in two cases: 1) For code blocks with language specification (e.g. \`\`\`python), and 2) For main section titles using a single #. Do not use any other markdown formatting. When providing code examples, focus on Python unless specifically asked for other languages, and only show curl examples if explicitly requested. Use the following context to help answer the user's question, but don't mention that you're using any context unless specifically asked:\n\n${context}`
       },
       ...messageHistory.map(msg => ({
         role: msg.role === 'bot' ? 'assistant' : msg.role,
