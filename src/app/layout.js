@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Your App",
-  description: "Your app description",
+  title: "CrustBot",
+  description: "Your AI-powered coding assistant",
 };
 
 export default function RootLayout({ children }) {
