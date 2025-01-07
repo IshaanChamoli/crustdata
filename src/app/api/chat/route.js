@@ -9,12 +9,64 @@ const pinecone = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY,
 });
 
+// Helper to safely execute code in a sandboxed environment
+async function executeCode(language, code, credentials = {}) {
+  try {
+    // Create a sandbox environment for code execution
+    const vm = await import('vm');
+    const context = {
+      console: {
+        log: (...args) => results.push(['log', ...args]),
+        error: (...args) => results.push(['error', ...args])
+      },
+      fetch: async (url, options = {}) => {
+        // Add credentials to headers if provided
+        if (credentials.apiKey) {
+          options.headers = {
+            ...options.headers,
+            'Authorization': `Bearer ${credentials.apiKey}`
+          };
+        }
+        return fetch(url, options);
+      },
+      setTimeout,
+      clearTimeout,
+      Buffer,
+      URL,
+      results: []
+    };
+
+    // Execute code in sandbox
+    const script = new vm.Script(code);
+    const results = [];
+    await script.runInNewContext(context, { timeout: 5000 });
+
+    return {
+      success: true,
+      output: results,
+      error: null
+    };
+  } catch (error) {
+    return {
+      success: false,
+      output: null,
+      error: error.message
+    };
+  }
+}
+
 export async function POST(request) {
   try {
-    const { message, messageHistory } = await request.json();
+    const { message, messageHistory, codeExecution } = await request.json();
 
-    // First, get embeddings for the user's message using text-embedding-3-large
-    // which produces 3072-dimensional vectors matching your Pinecone index
+    // Handle code execution request
+    if (codeExecution) {
+      const { language, code, credentials } = codeExecution;
+      const result = await executeCode(language, code, credentials);
+      return Response.json(result);
+    }
+
+    // Get embeddings for context search
     const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-3-large",
       input: message,
@@ -23,7 +75,7 @@ export async function POST(request) {
 
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
-    // Search Pinecone for relevant context
+    // Search for relevant context
     const index = pinecone.index(process.env.PINECONE_INDEX);
     const searchResponse = await index.query({
       vector: queryEmbedding,
@@ -31,17 +83,28 @@ export async function POST(request) {
       includeMetadata: true
     });
 
-    // Format context from relevant chunks
     const context = searchResponse.matches.map(match => match.metadata.text).join('\n\n');
 
-    // Create messages array with system context
+    // Updated system message to handle interactive code execution
     const messages = [
       {
         role: 'system',
-        content: `You are a helpful AI assistant. Keep responses concise and direct. Only use markdown in two cases: 1) For code blocks with language specification (e.g. \`\`\`python), and 2) For main section titles using a single #. Do not use any other markdown formatting. When providing code examples, focus on Python unless specifically asked for other languages, and only show curl examples if explicitly requested. Use the following context to help answer the user's question, but don't mention that you're using any context unless specifically asked:\n\n${context}`
+        content: `You are a helpful AI assistant that can actively execute code and make real API calls. You have a secure sandbox environment to run code safely. When users ask about APIs or code examples, get excited about running them!
+
+1. Enthusiastically offer to execute code examples - you can actually run them!
+2. For API calls, ask for necessary credentials (API keys, etc.) and offer to test them
+3. Show both the code and a curl command when relevant
+4. After execution, explain the results in a user-friendly way
+5. If there are errors, help troubleshoot them
+6. Encourage users to try different variations and experiment
+
+Use markdown for code blocks with language specification (e.g. \`\`\`python or \`\`\`curl).
+For section titles, use a single #.
+
+Use this context to help answer questions (but don't mention using it unless asked):\n\n${context}`
       },
       ...messageHistory.map(msg => ({
-        role: msg.role === 'bot' ? 'assistant' : msg.role,
+        role: msg.role === 'bot' ? 'assistant' : 'user',
         content: msg.content
       })),
       { role: 'user', content: message }
@@ -61,13 +124,12 @@ export async function POST(request) {
       references: searchResponse.matches.map(match => ({
         text: match.metadata.text,
         score: match.score,
-        chunkIndex: match.metadata.chunkIndex,
         source: match.metadata.chatbotName || 'Unknown'
       }))
     });
     
   } catch (error) {
-    console.error('OpenAI API error:', error);
+    console.error('API error:', error);
     return Response.json(
       { error: 'There was an error processing your request' },
       { status: 500 }

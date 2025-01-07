@@ -1,7 +1,28 @@
-export const getBotResponse = async (message, messageHistory = []) => {
+export const getBotResponse = async (message, messageHistory = [], codeExecution = null) => {
   try {
-    console.log('Getting bot response for message:', message); // Debug log
-    console.log('Message history:', messageHistory); // Debug log
+    console.log('Getting bot response for message:', message);
+    console.log('Message history:', messageHistory);
+
+    // Handle code execution request
+    if (codeExecution) {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ codeExecution }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to execute code');
+      }
+
+      const data = await response.json();
+      return {
+        response: data.output ? formatCodeOutput(data.output) : data.error,
+        isCodeExecution: true
+      };
+    }
 
     // Search for relevant context across entire database
     const searchResponse = await fetch('/api/pinecone/search', {
@@ -59,9 +80,19 @@ export const getBotResponse = async (message, messageHistory = []) => {
       }))
     };
   } catch (error) {
-    console.error('API error:', error);
-    throw error; // Propagate error to handler
+    console.error('Error:', error);
+    throw error;
   }
+};
+
+// Helper to format code execution output
+const formatCodeOutput = (output) => {
+  if (Array.isArray(output)) {
+    return output.map(([type, ...args]) => {
+      return `[${type}] ${args.join(' ')}`;
+    }).join('\n');
+  }
+  return String(output);
 };
 
 // Create chat message helper
@@ -102,4 +133,29 @@ export const handleMessage = async (newMessage, messageHistory = []) => {
       error: error.message || "Failed to get response. Please try again."
     };
   }
+};
+
+// Helper to extract code blocks from messages
+export const extractCodeBlock = (message) => {
+  const codeBlockRegex = /```(\w+)\n([\s\S]*?)```/;
+  const match = message.match(codeBlockRegex);
+  if (match) {
+    return {
+      language: match[1],
+      code: match[2].trim()
+    };
+  }
+  return null;
+};
+
+// Helper to detect if credentials are needed
+export const needsCredentials = (code) => {
+  const credentialPatterns = [
+    /api[-_]?key/i,
+    /auth[-_]?token/i,
+    /bearer[-_]?token/i,
+    /credentials/i,
+    /secret/i
+  ];
+  return credentialPatterns.some(pattern => pattern.test(code));
 }; 
